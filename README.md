@@ -4,6 +4,10 @@ Windows 桌面上的一个小开关：一键闭麦，一键切换耳机 / 音响
 
 ![](docs/preview.png)
 
+## 下载
+
+Windows 64 位。到 [Releases](https://github.com/Kutius/quick-action/releases/latest) 下载安装包（`quick-action-setup-*-amd64.exe`），或者用免安装的 zip，解压后直接运行。
+
 ## 功能
 
 - **闭麦** — 点击麦克风磁贴，静音或取消静音所有活动的录音设备
@@ -12,7 +16,7 @@ Windows 桌面上的一个小开关：一键闭麦，一键切换耳机 / 音响
 - **全局快捷键** — `Ctrl+Alt+M` 闭麦，`Ctrl+Alt+O` 切换输出
 - **全屏游戏自动让位** — 有程序全屏时面板自己藏起来，退出后自己回来
 
-## 运行
+## 从源码运行
 
 需要 Go 1.27 和 [MyGo](https://mygo.egoist.dev)。
 
