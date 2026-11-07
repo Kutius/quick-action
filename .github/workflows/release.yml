@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check the version matches the tag
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne $env:TAG) {
+            throw "mygo.json says $version, but the tag is $env:TAG"
+          }
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go tool mygo build
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
+          Compress-Archive -Path build/windows-amd64/quick-action.exe, build/windows-amd64/icon.png -DestinationPath "build/quick-action-$version-amd64.zip"
+
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
+          $setup = "build/windows-amd64/quick-action-setup-$version-amd64.exe"
+          $zip = "build/quick-action-$version-amd64.zip"
+          if (gh release view $env:TAG --json tagName 2>$null) {
+            gh release upload $env:TAG $setup $zip --clobber
+          } else {
+            gh release create $env:TAG $setup $zip --title $env:TAG --verify-tag --generate-notes
+          }

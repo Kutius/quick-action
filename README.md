@@ -6,7 +6,7 @@ Windows 桌面上的一个小开关：一键闭麦，一键切换耳机 / 音响
 
 ## 下载
 
-Windows 64 位。到 [Releases](https://github.com/Kutius/quick-action/releases/latest) 下载安装包（`quick-action-setup-*-amd64.exe`），或者用免安装的 zip，解压后直接运行。
+Windows 64 位。到 [Releases](https://github.com/Kutius/quick-action/releases/latest) 下载 `quick-action-setup-*-amd64.exe` 安装，或者下免安装的 `quick-action-*-amd64.zip`，解压后直接运行 `quick-action.exe`。
 
 ## 功能
 
