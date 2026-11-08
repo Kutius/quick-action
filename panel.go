@@ -11,8 +11,8 @@ import (
 // a row per setting: as wide as two tiles and the padding between them.
 const (
 	panelWidth      = 288
-	panelHeight     = 150
-	panelNoteHeight = 174
+	panelHeight     = 199
+	panelNoteHeight = 223
 	panelPadding    = 12
 	panelRow        = 38
 	panelRadius     = 14
@@ -29,6 +29,8 @@ func (a *app) settingsView(c *ui.Context) {
 		divider(c, t)
 		a.keyRow(c, keyMute, "闭麦")
 		a.keyRow(c, keyOutput, "切换输出")
+		divider(c, t)
+		a.updateRow(c)
 		if a.note != "" {
 			a.noteRow(c, t)
 		}
@@ -107,6 +109,43 @@ func (a *app) keyCap(c *ui.Context, i int, label string) {
 	cap.Children(func() {
 		ui.Text(c, value).FontSize(12).TextColor(ink).SingleLine()
 	})
+}
+
+// updateRow is the version of the tool, and the cap that checks for a
+// newer one.
+func (a *app) updateRow(c *ui.Context) {
+	t := c.Theme()
+	ui.Row(c).Height(panelRow).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+		ui.Text(c, "版本 "+appVersion()).FontSize(13).TextColor(t.Text)
+		a.updateCap(c)
+	})
+}
+
+// updateCap is the check for a newer version, a cap like the ones of the
+// shortcuts.
+func (a *app) updateCap(c *ui.Context) {
+	t := c.Theme()
+	cap := ui.Row(c).Height(23).Padding(0, 8).Radius(capRadius).AlignItems(ui.Center).
+		Cursor(ui.CursorPointer).Focusable().Label("检查更新")
+	lift := cap.AnimateTo("lift", amount(cap.Hovered()), liftSpring)
+	cap.Translate(0, -lift)
+
+	material := capPlate(t, ui.Color{})
+	material.paint(cap).Shadow(0, 1, 3, 0, material.cast)
+
+	cap.OnClick(func() { checkForUpdates() })
+	cap.Children(func() {
+		ui.Text(c, "检查更新").FontSize(12).TextColor(t.Text).SingleLine()
+	})
+}
+
+// appVersion is the version of the tool, or what it calls a build without
+// one, as go run makes.
+func appVersion() string {
+	if v := mygo.App.Version(); v != "" {
+		return v
+	}
+	return "开发版"
 }
 
 // noteRow says what the panel could not do, in one line under the rows.

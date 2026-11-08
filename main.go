@@ -80,6 +80,7 @@ type app struct {
 
 func main() {
 	a := &app{wake: make(chan struct{}, 1), saving: make(chan struct{}, 1)}
+	useUpdater()
 	mygo.App.WhenReady(a.ready)
 	// The tool lives in the notification area: hiding the card, or closing
 	// it, leaves it running.
@@ -203,9 +204,17 @@ func (a *app) setUpTray() {
 		mygo.Separator(),
 		a.panel,
 		{Label: "设置…", Click: func(*mygo.MenuItem, *mygo.Window) { a.openSettings() }},
+		{Label: "检查更新…", Click: func(*mygo.MenuItem, *mygo.Window) { a.checkUpdates() }},
 		mygo.Separator(),
 		{Label: "退出", Role: mygo.RoleQuit},
 	}))
+}
+
+// checkUpdates looks for a newer version, in front of the card: the window
+// that offers it must not open behind it.
+func (a *app) checkUpdates() {
+	mygo.App.Focus()
+	checkForUpdates()
 }
 
 // openSettings shows the panel next to the icon of the notification area,

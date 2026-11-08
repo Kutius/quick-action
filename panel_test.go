@@ -19,7 +19,7 @@ func panelApp() *app {
 // TestPanel shows the settings and the shortcuts the tool answers to.
 func TestPanel(t *testing.T) {
 	tt := ui.NewTester(panelApp().settingsView, panelWidth, panelHeight)
-	for _, want := range []string{"开机自启", "闭麦", "切换输出", "Ctrl+Alt+M", "Ctrl+Alt+O"} {
+	for _, want := range []string{"开机自启", "闭麦", "切换输出", "Ctrl+Alt+M", "Ctrl+Alt+O", "检查更新", "版本"} {
 		if !tt.HasText(want) {
 			t.Errorf("texts %q, want %q", tt.Texts(), want)
 		}
@@ -42,6 +42,22 @@ func TestPanelStates(t *testing.T) {
 		if !tt.HasText(want) {
 			t.Errorf("texts %q, want %q", tt.Texts(), want)
 		}
+	}
+}
+
+// TestPanelChecksForUpdates checks that the cap of the panel asks for a
+// newer version, as the menu of the icon does.
+func TestPanelChecksForUpdates(t *testing.T) {
+	check, checked := checkForUpdates, 0
+	checkForUpdates = func() { checked++ }
+	defer func() { checkForUpdates = check }()
+
+	tt := ui.NewTester(panelApp().settingsView, panelWidth, panelHeight)
+	if err := tt.Click("检查更新"); err != nil {
+		t.Fatal(err)
+	}
+	if checked != 1 {
+		t.Errorf("checked %d times, want 1", checked)
 	}
 }
 
