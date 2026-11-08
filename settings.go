@@ -11,9 +11,13 @@ import (
 
 // settings are what the tool remembers between runs, besides where its card
 // is: the output the user switched away from, so that a click on the card
-// switches back to it.
+// switches back to it, and the shortcuts the tool answers to.
 type settings struct {
 	PreviousOutput string `json:"previousOutput"`
+	// Hotkeys are the shortcuts of the microphone and of the output, in
+	// that order, as accelerators. None means the user never picked any,
+	// which the tool fills in with its own; a blank one was cleared.
+	Hotkeys []string `json:"hotkeys,omitempty"`
 }
 
 // settingsFile is the file settings are kept in, in the app's user data

@@ -10,16 +10,9 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// hotkeys switch the microphone and the output, the first of each that the
-// desktop takes.
-var (
-	hotkeys       = []string{"Ctrl+Alt+M", "Ctrl+Alt+Shift+M"}
-	outputHotkeys = []string{"Ctrl+Alt+O", "Ctrl+Alt+Shift+O"}
-)
-
 // app is the tool: the microphones and outputs it switches, the card on the
-// desktop that shows them and the icon in the notification area that brings
-// the card back.
+// desktop that shows them, the icon in the notification area that brings the
+// card back, and the panel of settings behind the icon.
 type app struct {
 	audio audioController
 
@@ -54,12 +47,23 @@ type app struct {
 	win *mygo.Window
 	// hwnd is the native window of the card, kept here so that asking the
 	// card to step out of a game's way never waits for the main thread.
-	hwnd   uintptr
-	tray   *mygo.Tray
-	mute   *mygo.MenuItem
-	panel  *mygo.MenuItem
-	hotkey string
-	outKey string
+	hwnd    uintptr
+	tray    *mygo.Tray
+	mute    *mygo.MenuItem
+	outItem *mygo.MenuItem
+	panel   *mygo.MenuItem
+
+	// keys are the shortcuts the tool answers to, in the order of the rows
+	// of the panel, and settingsWin the panel itself.
+	keys        [2]hotkey
+	settingsWin *mygo.Window
+
+	// autoStart is whether the tool starts with the user's session, as the
+	// system last said, note what the panel says went wrong, and listening
+	// the row it waits for a shortcut on, plus one.
+	autoStart bool
+	note      string
+	listening int
 
 	// shownMuted and shownTip are what the icon shows, and lastShown what
 	// the card draws, so that a read that finds nothing new redraws
@@ -103,10 +107,11 @@ func (a *app) ready() {
 	// Read once before the card opens, so that it shows the audio rather
 	// than an empty card for its first frame.
 	st, err := a.audio.State()
-	previous := loadSettings().PreviousOutput
+	saved := loadSettings()
 	a.mu.Lock()
 	a.state, a.err = st, err
-	a.lastSeen, a.previous = st.Output.ID, previous
+	a.lastSeen, a.previous = st.Output.ID, saved.PreviousOutput
+	a.pending = saved
 	a.mu.Unlock()
 
 	a.win = mygo.NewWindow(mygo.WindowOptions{
@@ -135,7 +140,7 @@ func (a *app) ready() {
 		a.panelShown(false)
 	})
 
-	a.setUpHotkeys()
+	a.setUpKeys(saved.Hotkeys)
 	a.setUpTray()
 	a.hwnd = a.win.NativeHandle()
 	a.avoidGames()
@@ -159,23 +164,6 @@ func (a *app) previousOutput() string {
 	return a.previous
 }
 
-// register binds the first of keys the desktop takes.
-func (a *app) register(keys []string, fn func()) string {
-	for _, key := range keys {
-		if err := mygo.GlobalShortcut.Register(key, fn); err == nil {
-			return key
-		} else {
-			log.Printf("shortcut %s: %v", key, err)
-		}
-	}
-	return ""
-}
-
-func (a *app) setUpHotkeys() {
-	a.hotkey = a.register(hotkeys, a.toggle)
-	a.outKey = a.register(outputHotkeys, a.switchOutput)
-}
-
 func (a *app) setUpTray() {
 	st, audioErr := a.snapshot()
 	tray, err := mygo.NewTray(mygo.TrayOptions{
@@ -196,8 +184,13 @@ func (a *app) setUpTray() {
 
 	a.mute = &mygo.MenuItem{
 		Label:    switchLabel(st.Mic.Muted),
-		Subtitle: a.hotkey,
+		Subtitle: a.keys[keyMute].chord,
 		Click:    func(*mygo.MenuItem, *mygo.Window) { a.toggle() },
+	}
+	a.outItem = &mygo.MenuItem{
+		Label:    "切换输出",
+		Subtitle: a.keys[keyOutput].chord,
+		Click:    func(*mygo.MenuItem, *mygo.Window) { a.switchOutput() },
 	}
 	a.panel = &mygo.MenuItem{
 		ID: "panel", Label: "显示面板", Type: mygo.MenuItemCheckbox, Checked: true,
@@ -205,13 +198,80 @@ func (a *app) setUpTray() {
 	}
 	tray.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 		a.mute,
-		{Label: "切换输出", Subtitle: a.outKey, Click: func(*mygo.MenuItem, *mygo.Window) { a.switchOutput() }},
+		a.outItem,
 		{Label: "选择输出…", Click: func(*mygo.MenuItem, *mygo.Window) { a.chooseOutput() }},
 		mygo.Separator(),
 		a.panel,
+		{Label: "设置…", Click: func(*mygo.MenuItem, *mygo.Window) { a.openSettings() }},
 		mygo.Separator(),
 		{Label: "退出", Role: mygo.RoleQuit},
 	}))
+}
+
+// openSettings shows the panel next to the icon of the notification area,
+// asking the system what it says about the tool as it does: it starts the
+// tool at login, or it does not.
+func (a *app) openSettings() {
+	if a.quitting.Load() || a.settingsWin != nil {
+		return
+	}
+	a.listening = 0
+	a.autoStart = mygo.App.OpenAtLogin()
+	a.note = a.keyNote()
+	opts := mygo.FlyoutOptions{
+		Placement: mygo.PlacementTopEnd,
+		Gap:       8,
+		Width:     panelWidth,
+		Height:    a.panelSize(),
+		Focusable: true,
+		Shadow:    true,
+		Content:   ui.View(a.settingsView),
+	}
+	switch {
+	case a.tray != nil:
+		opts.Tray = a.tray
+	case a.win != nil:
+		// Without an icon to hang it on, the panel opens beside the card.
+		opts.Parent = a.win
+		opts.Placement = mygo.PlacementBottomStart
+		opts.Anchor = mygo.Rectangle{Width: widgetWidth, Height: 1}
+	default:
+		return
+	}
+	a.settingsWin = mygo.NewFlyout(opts)
+	a.settingsWin.OnClosed(func() { a.settingsWin = nil })
+}
+
+// invalidateSettings draws the panel again, for what it shows changed: the
+// line it says a shortcut is taken on makes it taller.
+func (a *app) invalidateSettings() {
+	if a.settingsWin == nil || a.quitting.Load() {
+		return
+	}
+	a.settingsWin.SetSize(panelWidth, a.panelSize())
+	a.settingsWin.Invalidate()
+}
+
+// panelSize is how tall the panel is: taller with the line that says why a
+// shortcut is off.
+func (a *app) panelSize() int {
+	if a.note != "" {
+		return panelNoteHeight
+	}
+	return panelHeight
+}
+
+// remember changes what the tool keeps between runs, and has the writer
+// write it: the thread that draws must not wait for the disk.
+func (a *app) remember(change func(*settings)) {
+	a.mu.Lock()
+	change(&a.pending)
+	a.unsaved = true
+	a.mu.Unlock()
+	select {
+	case a.saving <- struct{}{}:
+	default:
+	}
 }
 
 // togglePanel shows the card, or puts it away, as a click on the icon of
@@ -394,7 +454,8 @@ func (a *app) publish(st audioState, err error) {
 	switched := st.Output.ID != "" && a.lastSeen != "" && st.Output.ID != a.lastSeen
 	if switched {
 		a.previous = a.lastSeen
-		a.pending, a.unsaved = settings{PreviousOutput: a.previous}, true
+		a.pending.PreviousOutput = a.previous
+		a.unsaved = true
 	}
 	if st.Output.ID != "" {
 		a.lastSeen = st.Output.ID
