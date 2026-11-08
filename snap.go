@@ -13,8 +13,10 @@ import (
 const snapGap = 24
 
 // snapPoll is how often the watcher looks at the button while the card is
-// dragged, so that the card settles as soon as it is let go.
-const snapPoll = 12 * time.Millisecond
+// dragged, so that the card settles as soon as it is let go: often enough
+// that the glide starts as the hand comes off it, rarely enough that the
+// wakeups cost nothing.
+const snapPoll = 30 * time.Millisecond
 
 // glideTime is how long the card takes to come to rest against the edge it
 // settled on.
