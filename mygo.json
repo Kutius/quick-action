@@ -1,7 +1,7 @@
 {
   "name": "quick-action",
   "identifier": "dev.kutius.quickaction",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "out": "build",
   "updates": {
     "publicKey": "2tCto5E7ooNui34cLjbXJtLNFX2/k9b295c0k2K/F9Y=",
