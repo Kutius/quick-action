@@ -43,6 +43,22 @@ jobs:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: go tool mygo build -platform windows/amd64 -upload
 
+      # Which file to download, under the changelog mygo build wrote. The
+      # update window shows the changelog alone, so the guide lives here.
+      - name: Say what to download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
+          $body = (gh release view $env:TAG --json body -q .body | Out-String).Trim()
+          if ($body -match '(?m)^## 下载') { exit 0 }
+          $guide = (Get-Content .github/release-downloads.md -Raw).Replace('{version}', $version)
+          $notes = Join-Path $env:RUNNER_TEMP 'notes.md'
+          Set-Content -Path $notes -Value ($body + "`n`n" + $guide.Trim()) -Encoding utf8
+          gh release edit $env:TAG --notes-file $notes
+
       # The installer and the update archive are what mygo build uploads;
       # the zip is the portable copy the README offers.
       - name: Upload the portable zip
