@@ -181,8 +181,8 @@ func (a *app) micTile(c *ui.Context, st audioState, err error) {
 		value, valueColor = "未找到麦克风", t.TextMuted
 	}
 
-	tile := cardTile(c, t.Danger, muted, "切换麦克风")
-	mute := tile.mute
+	tile, ctl := cardTile(c, t.Danger, muted, "切换麦克风")
+	mute := ctl.mute
 	ink := t.Text.Mix(t.Danger, mute)
 
 	tile.OnClick(a.toggle).Children(func() {
@@ -218,7 +218,7 @@ func (a *app) outputTile(c *ui.Context, st audioState, err error) {
 		value, valueColor = "未找到输出设备", t.TextMuted
 	}
 
-	tile := cardTile(c, t.Danger, false, "切换输出")
+	tile, ctl := cardTile(c, t.Danger, false, "切换输出")
 
 	tile.OnClick(a.switchOutput).Children(func() {
 		ui.Icon(c, speakerSVG).FontSize(21).TextColor(t.Text)
@@ -228,7 +228,7 @@ func (a *app) outputTile(c *ui.Context, st audioState, err error) {
 		if st.Outputs > 1 {
 			more := ui.Box(c).Size(18, 18).Radius(5).Center().
 				Absolute().Top(3).Right(3).Cursor(ui.CursorPointer).Label("选择输出").
-				Opacity(tile.lift)
+				Opacity(ctl.lift)
 			if more.Hovered() {
 				more.Background(t.Text.Alpha(0.08))
 			}
@@ -239,18 +239,17 @@ func (a *app) outputTile(c *ui.Context, st audioState, err error) {
 	})
 }
 
-// control is a tile of the card, with the values its own motion runs on:
-// how far it has turned to the danger color, and how far the pointer has
-// lifted it.
+// control is what a tile's motion runs on: how far it has turned to the
+// danger color, and how far the pointer has lifted it.
 type control struct {
-	ui.Element
 	mute, lift float32
 }
 
 // cardTile is a tile of the card: a switch raised from it, which lifts as
 // the pointer arrives and sets down under a press, and turns to tint as the
-// audio does.
-func cardTile(c *ui.Context, tint ui.Color, muted bool, label string) control {
+// audio does. The element comes back on its own, rather than in control: a
+// build value kept in a struct outlives the frame that made it.
+func cardTile(c *ui.Context, tint ui.Color, muted bool, label string) (ui.Element, control) {
 	t := c.Theme()
 	tile := ui.Column(c).Grow(1).Gap(6).Center().Radius(tileRadius).
 		Cursor(ui.CursorPointer).Label(label)
@@ -266,7 +265,7 @@ func cardTile(c *ui.Context, tint ui.Color, muted bool, label string) control {
 	material := tilePlate(t, ui.Color{}).mix(tilePlate(t, tint), mute)
 	material = material.mix(material.lit(t.Dark), lift)
 	material.paint(tile).Shadow(0, 1, 3, 0, material.cast)
-	return control{Element: tile, mute: mute, lift: lift}
+	return tile, control{mute: mute, lift: lift}
 }
 
 // amount is a state as the value its animations run to.
