@@ -1,6 +1,6 @@
 {
   "name": "quick-action",
   "identifier": "dev.kutius.quickaction",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "out": "build"
 }
