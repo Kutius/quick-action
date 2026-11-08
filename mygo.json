@@ -1,8 +1,13 @@
 {
   "name": "quick-action",
+  "slug": "quick-action",
   "identifier": "dev.kutius.quickaction",
-  "version": "0.1.1",
+  "version": "0.1.2",
+  "copyright": "© 2026 Kutius",
   "out": "build",
+  "windows": {
+    "displayName": "Quick Action"
+  },
   "updates": {
     "publicKey": "2tCto5E7ooNui34cLjbXJtLNFX2/k9b295c0k2K/F9Y=",
     "github": "Kutius/quick-action"
