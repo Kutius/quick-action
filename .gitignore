@@ -2,4 +2,5 @@
 /.mygo/
 /.agents/
 /*.exe
+/quick-action
 mygo_windows_*.syso

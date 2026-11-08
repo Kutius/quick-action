@@ -74,12 +74,20 @@ type app struct {
 	lastShown  cardState
 	shown      bool
 
-	// wake asks the watcher to read the audio again.
-	wake chan struct{}
+	// wake asks the watcher to read the audio again, moved wakes the one
+	// that settles the card at an edge, and settling is set while it glides
+	// there.
+	wake     chan struct{}
+	moved    chan struct{}
+	settling atomic.Bool
 }
 
 func main() {
-	a := &app{wake: make(chan struct{}, 1), saving: make(chan struct{}, 1)}
+	a := &app{
+		wake:   make(chan struct{}, 1),
+		saving: make(chan struct{}, 1),
+		moved:  make(chan struct{}, 1),
+	}
 	useUpdater()
 	mygo.App.WhenReady(a.ready)
 	// The tool lives in the notification area: hiding the card, or closing
@@ -140,6 +148,9 @@ func (a *app) ready() {
 		a.win.Hide()
 		a.panelShown(false)
 	})
+
+	a.win.OnMove(a.cardMoved)
+	go a.watchSnap()
 
 	a.setUpKeys(saved.Hotkeys)
 	a.setUpTray()
