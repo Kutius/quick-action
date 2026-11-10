@@ -2,7 +2,7 @@
   "name": "quick-action",
   "slug": "quick-action",
   "identifier": "dev.kutius.quickaction",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "copyright": "© 2026 Kutius",
   "out": "build",
   "windows": {
