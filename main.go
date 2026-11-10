@@ -133,12 +133,17 @@ func (a *app) ready() {
 		MaxHeight:     widgetHeight,
 		Frameless:     true,
 		Panel:         true,
-		CornerRadius:  14,
+		CornerRadius:  cardRadius,
 		DisableResize: true,
 		// Opens where the user left it, and stays where they drag it.
 		StateKey: "widget",
 		Content:  ui.View(a.view),
 	})
+	// The card is one size: a state saved by the wider card before it must
+	// not stretch it.
+	if w, h := a.win.Size(); w != widgetWidth || h != widgetHeight {
+		a.win.SetSize(widgetWidth, widgetHeight)
+	}
 	// Closing the card hides it: the tray icon keeps the tool at hand.
 	a.win.OnClose(func(e *mygo.CloseEvent) {
 		if a.quitting.Load() {

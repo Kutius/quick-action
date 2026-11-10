@@ -7,19 +7,36 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// The card is two tiles, as wide and as tall as they are.
+// The card is one row: the microphone and the output, each a zone of it.
 const (
-	widgetWidth  = 264
-	widgetHeight = 84
+	widgetWidth  = 200
+	widgetHeight = 48
 )
 
-// The card lays its tiles out in a row of that padding and gap; each tile
-// fills the rest.
+// The card lays its zones out in a row of that padding and gap, with a
+// hairline between them; each zone is as tall as the row, and the microphone
+// one keeps its width so that the output does not move as the microphone
+// changes state.
+//
+// cardRadius is the radius Windows rounds the window itself to. DWM cuts a
+// frameless window to the corners of its own windows, whatever radius it is
+// given, so the card draws the same radius to meet the edge it is cut at;
+// docs/window-corners.md has the alternatives and their tradeoffs.
 const (
-	cardPadding = 10
-	cardGap     = 7
-	cardRadius  = 13
-	tileRadius  = 11
+	cardPadding = 8
+	cardGap     = 4
+	cardRadius  = 8
+	zoneHeight  = 32
+	zoneRadius  = 8
+	zonePadding = 7
+	zoneGap     = 4
+	micWidth    = 72
+	outputIcon  = 16
+	chevronBox  = 16
+	// nameWidth is what the output's name may take: the output zone's width,
+	// without its padding, its icon, the chevron and the gaps between them.
+	nameWidth = widgetWidth - 2*cardPadding - 2*cardGap - 1 - micWidth -
+		2*zonePadding - outputIcon - chevronBox - 3*zoneGap
 )
 
 // The card's motion: a quick spring for what the pointer does, which should
@@ -50,34 +67,6 @@ func (p plate) paint(e ui.Element) ui.Element {
 	e = e.InsetShadow(0, 1, 0, 0, p.shine)
 	e = e.InsetShadow(0, 2, 12, 0, p.glow)
 	return e.InsetShadow(0, -1, 1, 0, p.shade)
-}
-
-// lit is the plate with the light a pointer over it gives.
-func (p plate) lit(dark bool) plate {
-	toward := ui.RGB(0, 0, 0)
-	if dark {
-		toward = ui.RGB(255, 255, 255)
-	}
-	p.face.From = p.face.From.Mix(toward, 0.07)
-	p.face.To = p.face.To.Mix(toward, 0.07)
-	return p
-}
-
-// mix is the plate f of the way from p to o, for a material that changes
-// with the audio rather than blinking into its next state.
-func (p plate) mix(o plate, f float32) plate {
-	return plate{
-		face: ui.LinearGradient{Angle: p.face.Angle,
-			From: p.face.From.Mix(o.face.From, f),
-			To:   p.face.To.Mix(o.face.To, f)},
-		edge: ui.LinearGradient{Angle: p.edge.Angle,
-			From: p.edge.From.Mix(o.edge.From, f),
-			To:   p.edge.To.Mix(o.edge.To, f)},
-		shine: p.shine.Mix(o.shine, f),
-		glow:  p.glow.Mix(o.glow, f),
-		shade: p.shade.Mix(o.shade, f),
-		cast:  p.cast.Mix(o.cast, f),
-	}
 }
 
 // cardPlate is the material of the card itself, which sits on the desktop
@@ -146,27 +135,47 @@ func tilePlate(t *ui.Theme, tint ui.Color) plate {
 	}
 }
 
-// view draws the card: the microphone and the output, each a tile that does
+// view draws the card: the microphone and the output, each a zone that does
 // its switch where it is clicked. The card's edge moves the window, as a
-// panel of macOS moves by what it is not, so that the tiles stay free to be
+// panel of macOS moves by what it is not, so that the zones stay free to be
 // switches.
 func (a *app) view(c *ui.Context) {
 	// One read of what the audio does for the whole frame, so that the two
-	// tiles cannot show two different states.
+	// zones cannot show two different states.
 	st, err := a.snapshot()
 	t := c.Theme()
-	card := cardPlate(t).paint(ui.Row(c).Fill().
-		Padding(cardPadding).Gap(cardGap).AlignItems(ui.Stretch).Radius(cardRadius))
-	card.Cursor(ui.CursorGrab).DragWindow().Children(func() {
-		a.micTile(c, st, err)
-		a.outputTile(c, st, err)
+	p := cardPlate(t)
+	// The face runs under the card too: Windows rounds the window itself,
+	// and a corner it rounds a hair wider than the card would otherwise
+	// show the background behind it.
+	ui.Box(c).Fill().LinearGradient(p.face).Children(func() {
+		a.card(c, st, err, t, p)
 	})
 }
 
-// micTile is the microphone: a click mutes or unmutes it. The card turns to
+// card draws the card: the microphone and the output, each a zone that does
+// its switch where it is clicked. The card's edge moves the window, as a
+// panel of macOS moves by what it is not, so that the zones stay free to be
+// switches.
+func (a *app) card(c *ui.Context, st audioState, err error, t *ui.Theme, p plate) {
+	card := p.paint(ui.Row(c).Fill().
+		Padding(cardPadding).Gap(cardGap).AlignItems(ui.Center).Radius(cardRadius))
+	card.Cursor(ui.CursorGrab).DragWindow().Children(func() {
+		a.micZone(c, st, err)
+		cardDivider(c, t)
+		a.outputZone(c, st, err)
+	})
+}
+
+// cardDivider parts the microphone from the output.
+func cardDivider(c *ui.Context, t *ui.Theme) {
+	ui.Box(c).Width(1).Height(16).Background(t.Text.Alpha(0.10))
+}
+
+// micZone is the microphone: a click mutes or unmutes it. The zone turns to
 // the danger color as it does, and the microphone in it gives way to the
 // one with a line through it, both on the way the spring carries.
-func (a *app) micTile(c *ui.Context, st audioState, err error) {
+func (a *app) micZone(c *ui.Context, st audioState, err error) {
 	t := c.Theme()
 	muted := st.Mic.Muted && err == nil
 
@@ -178,17 +187,18 @@ func (a *app) micTile(c *ui.Context, st audioState, err error) {
 	case err != nil:
 		value, valueColor = "不可用", t.TextMuted
 	case st.Mic.Device == "":
-		value, valueColor = "未找到麦克风", t.TextMuted
+		value, valueColor = "未找到", t.TextMuted
 	}
 
-	tile, ctl := cardTile(c, t.Danger, muted, "切换麦克风")
+	zone, ctl := cardZone(c, t.Danger, muted, "切换麦克风")
+	zone.Width(micWidth)
 	mute := ctl.mute
 	ink := t.Text.Mix(t.Danger, mute)
 
-	tile.OnClick(a.toggle).Children(func() {
+	zone.OnClick(a.toggle).Children(func() {
 		// The two microphones sit in one place, one fading in as the other
-		// fades out, so that the tile changes rather than blinks.
-		ui.Box(c).Size(21, 21).Children(func() {
+		// fades out, so that the zone changes rather than blinks.
+		ui.Box(c).Size(17, 17).Children(func() {
 			for _, glyph := range []struct {
 				svg  *ui.SVG
 				fade float32
@@ -199,73 +209,81 @@ func (a *app) micTile(c *ui.Context, st audioState, err error) {
 				{micOffSVG, (1 - mute) * (1 - mute)},
 			} {
 				icon := ui.Box(c).Absolute().Fill().Center().Opacity(1 - glyph.fade)
-				icon.Children(func() { ui.Icon(c, glyph.svg).FontSize(21).TextColor(ink) })
+				icon.Children(func() { ui.Icon(c, glyph.svg).FontSize(17).TextColor(ink) })
 			}
 		})
 		ui.Text(c, value).FontSize(11).TextColor(valueColor.Mix(t.Danger, mute)).SingleLine().Ellipsis("…")
 	})
 }
 
-// outputTile is the output: a click switches to the one the user was on
+// outputZone is the output: a click switches to the one the user was on
 // before, and the arrow picks another.
-func (a *app) outputTile(c *ui.Context, st audioState, err error) {
+func (a *app) outputZone(c *ui.Context, st audioState, err error) {
 	t := c.Theme()
 	value, valueColor := shortName(st.Output.Name), t.Text
 	switch {
 	case err != nil:
 		value, valueColor = "不可用", t.TextMuted
 	case value == "":
-		value, valueColor = "未找到输出设备", t.TextMuted
+		value, valueColor = "未找到", t.TextMuted
 	}
 
-	tile, ctl := cardTile(c, t.Danger, false, "切换输出")
+	zone, ctl := cardZone(c, ui.Color{}, false, "切换输出")
+	zone.Grow(1)
 
-	tile.OnClick(a.switchOutput).Children(func() {
-		ui.Icon(c, speakerSVG).FontSize(21).TextColor(t.Text)
-		ui.Text(c, value).FontSize(11).TextColor(valueColor).SingleLine().Ellipsis("…")
-		// The way to another output rises with the pointer, so that the
-		// tile is nothing but the output at rest.
+	zone.OnClick(a.switchOutput).Children(func() {
+		ui.Icon(c, speakerSVG).FontSize(outputIcon).TextColor(t.Text)
+		ui.Text(c, value).FontSize(11).TextColor(valueColor).SingleLine().
+			Ellipsis("…").MaxWidth(nameWidth)
+		ui.Spacer(c)
+		// The way to another output, faint at rest and lit with the pointer,
+		// as the zone washes.
 		if st.Outputs > 1 {
-			more := ui.Box(c).Size(18, 18).Radius(5).Center().
-				Absolute().Top(3).Right(3).Cursor(ui.CursorPointer).Label("选择输出").
-				Opacity(ctl.lift)
+			more := ui.Box(c).Size(chevronBox, chevronBox).Radius(5).Center().
+				Cursor(ui.CursorPointer).Label("选择输出").Opacity(0.55 + 0.45*ctl.lift)
 			if more.Hovered() {
 				more.Background(t.Text.Alpha(0.08))
 			}
 			more.OnClick(a.chooseOutput).Children(func() {
-				ui.Icon(c, chevronSVG).FontSize(10).TextColor(t.TextMuted)
+				ui.Icon(c, chevronSVG).FontSize(11).TextColor(t.TextMuted)
 			})
 		}
 	})
 }
 
-// control is what a tile's motion runs on: how far it has turned to the
-// danger color, and how far the pointer has lifted it.
+// control is what a zone's motion runs on: how far it has turned to the
+// danger color, and how far the pointer has washed it.
 type control struct {
 	mute, lift float32
 }
 
-// cardTile is a tile of the card: a switch raised from it, which lifts as
-// the pointer arrives and sets down under a press, and turns to tint as the
-// audio does. The element comes back on its own, rather than in control: a
-// build value kept in a struct outlives the frame that made it.
-func cardTile(c *ui.Context, tint ui.Color, muted bool, label string) (ui.Element, control) {
+// cardZone is a zone of the card: the pointer washes it, a press deepens the
+// wash and sets it down, and a state that is on, as a muted microphone, tints
+// it. The element comes back on its own, rather than in control: a build
+// value kept in a struct outlives the frame that made it.
+func cardZone(c *ui.Context, tint ui.Color, muted bool, label string) (ui.Element, control) {
 	t := c.Theme()
-	tile := ui.Column(c).Grow(1).Gap(6).Center().Radius(tileRadius).
+	zone := ui.Row(c).Height(zoneHeight).Gap(zoneGap).Padding(0, zonePadding).
+		AlignItems(ui.Center).Radius(zoneRadius).
 		Cursor(ui.CursorPointer).Label(label)
-	mute := tile.AnimateTo("mute", amount(muted), stateFade)
-	lift := tile.AnimateTo("lift", amount(tile.Hovered()), liftSpring)
-	press := tile.AnimateTo("press", amount(tile.Pressed()), pressSpring)
-	// The pointer lifts the tile a pixel and a press sets it down. Both are
-	// applied here, from the values the springs carry, rather than posed
-	// towards values that are themselves still moving, which would lag.
-	set := 1 - 0.03*press
-	tile.Translate(0, -lift).Scale(set, set)
+	mute := zone.AnimateTo("mute", amount(muted), stateFade)
+	lift := zone.AnimateTo("lift", amount(zone.Hovered()), liftSpring)
+	press := zone.AnimateTo("press", amount(zone.Pressed()), pressSpring)
 
-	material := tilePlate(t, ui.Color{}).mix(tilePlate(t, tint), mute)
-	material = material.mix(material.lit(t.Dark), lift)
-	material.paint(tile).Shadow(0, 1, 3, 0, material.cast)
-	return tile, control{mute: mute, lift: lift}
+	// The wash of the pointer, deeper under a press; a state that is on
+	// tints the zone, and the wash deepens that tint.
+	wash := 0.05*lift + 0.06*press
+	background := t.Text.Alpha(wash)
+	if tint != (ui.Color{}) {
+		background = background.Mix(tint.Alpha(0.13+wash), mute)
+	}
+	zone.Background(background)
+
+	// The press sets the zone down, from the value the spring carries rather
+	// than towards one that is itself still moving, which would lag.
+	set := 1 - 0.03*press
+	zone.Scale(set, set)
+	return zone, control{mute: mute, lift: lift}
 }
 
 // amount is a state as the value its animations run to.
@@ -277,7 +295,7 @@ func amount(on bool) float32 {
 }
 
 // shortName is a device name without the adapter Windows adds in brackets:
-// "耳机 (Realtek USB Audio)" is "耳机", which is what a tile shows. The
+// "耳机 (Realtek USB Audio)" is "耳机", which is what the card shows. The
 // picker shows the whole name.
 func shortName(name string) string {
 	for _, bracket := range []string{" (", "（"} {
